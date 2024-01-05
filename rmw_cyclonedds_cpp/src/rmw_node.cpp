@@ -3599,10 +3599,23 @@ static rmw_ret_t rmw_send_response_request(
   const void * ros_data)
 {
   const cdds_request_wrapper_t wrap = {header, const_cast<void *>(ros_data)};
-  if (dds_write(cs->pub->enth, static_cast<const void *>(&wrap)) >= 0) {
+  dds_return_t ret = dds_write(cs->pub->enth, static_cast<const void *>(&wrap));
+
+  for (int i = 1; i < 6; i++) {
+    if (ret == DDS_RETCODE_TIMEOUT) {
+      std::cerr << "DDS Write timeout, retry " << i << std::endl;
+      ret = dds_write(cs->pub->enth, static_cast<const void *>(&wrap));
+    }
+  }
+
+  if (ret >= 0) {
     return RMW_RET_OK;
+  } else if (ret == DDS_RETCODE_TIMEOUT) {
+    RMW_SET_ERROR_MSG("cannot publish data, timeout");
+    return RMW_RET_TIMEOUT;
   } else {
-    RMW_SET_ERROR_MSG("cannot publish data");
+    auto strret = dds_strretcode(ret);
+    RMW_SET_ERROR_MSG_WITH_FORMAT_STRING("cannot publish data, ret_code=%s", strret);
     return RMW_RET_ERROR;
   }
 }
